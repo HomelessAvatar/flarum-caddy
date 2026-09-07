@@ -1,0 +1,34 @@
+services:
+  flarum:
+    image: ghcr.io/homelessavatar/flarum-caddy:latest
+    container_name: flarum
+    restart: unless-stopped
+    ports:
+      - "8000:8000"
+    environment:
+      - FORUM_URL=http://localhost:8000
+      - DB_HOST=mariadb
+      - DB_NAME=flarum
+      - DB_USER=flarum
+      - DB_PASSWORD=flarum_secret
+      - DB_PREFIX=fl_
+    volumes:
+      - flarum_data:/data
+    depends_on:
+      - mariadb
+
+  mariadb:
+    image: mariadb:lts
+    container_name: flarum-db
+    restart: unless-stopped
+    environment:
+      - MYSQL_ROOT_PASSWORD=root_secret
+      - MYSQL_DATABASE=flarum
+      - MYSQL_USER=flarum
+      - MYSQL_PASSWORD=flarum_secret
+    volumes:
+      - mariadb_data:/var/lib/mysql
+
+volumes:
+  flarum_data:
+  mariadb_data:

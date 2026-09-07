@@ -1,0 +1,34 @@
+{
+	admin off
+	auto_https off
+}
+
+:8000 {
+	root * /opt/flarum/public
+	encode zstd gzip
+
+	@static {
+		file
+		path *.ico *.css *.js *.gif *.webp *.avif *.jpg *.jpeg *.png *.svg *.woff *.woff2 *.ttf *.eot
+	}
+	header @static Cache-Control "max-age=31536000, public, immutable"
+
+	header {
+		X-Content-Type-Options "nosniff"
+		X-Frame-Options "SAMEORIGIN"
+		Referrer-Policy "same-origin"
+		-Server
+	}
+
+	@forbidden {
+		path /storage/*
+		path /config.php
+		path /flarum
+		path /composer.*
+		path */.*
+	}
+	respond @forbidden 403
+
+	php_fastcgi 127.0.0.1:9000
+	file_server
+}
