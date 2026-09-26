@@ -62,7 +62,7 @@ RUN { \
 
 # Initialize Flarum skeleton and bundled extensions
 WORKDIR /opt/flarum
-RUN COMPOSER_CACHE_DIR=/tmp composer create-project flarum/flarum:${FLARUM_VERSION} /opt/flarum --no-install \
+RUN COMPOSER_CACHE_DIR=/tmp composer create-project flarum/flarum:^1.8 /opt/flarum --no-install \
  && COMPOSER_CACHE_DIR=/tmp composer require flarum/core:${FLARUM_VERSION} -W --no-interaction \
  && composer clear-cache \
  && chown -R www-data:www-data /opt/flarum \
