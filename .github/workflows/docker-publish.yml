@@ -43,7 +43,7 @@ jobs:
             type=raw,value=latest,enable={{is_default_branch}}
             type=semver,pattern={{version}}
             type=semver,pattern={{major}}.{{minor}}
-            type=raw,value=1.8.19
+            type=raw,value=1.8.20
 
       - name: Build and push Docker image
         uses: docker/build-push-action@v5

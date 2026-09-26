@@ -4,7 +4,7 @@
     <strong>Ultra-lightweight Flarum Docker image powered by Caddy 2 and PHP 8.4 (Zero Nginx)</strong>
   </p>
   <p align="center">
-    <img src="https://img.shields.io/badge/Flarum-v1.8.19-e7672e.svg" alt="Flarum Version" />
+    <img src="https://img.shields.io/badge/Flarum-v1.8.20-e7672e.svg" alt="Flarum Version" />
     <img src="https://img.shields.io/badge/PHP-8.4-777bb4.svg" alt="PHP Version" />
     <img src="https://img.shields.io/badge/Web_Server-Caddy_2-22b8eb.svg" alt="Caddy Web Server" />
     <img src="https://img.shields.io/badge/Base-Alpine_Linux-0d597f.svg" alt="Alpine Linux" />
@@ -35,7 +35,7 @@ Create a `docker-compose.yml` file:
 ```yaml
 services:
   flarum:
-    image: ghcr.io/homelessavatar/flarum-caddy:1.8.19
+    image: ghcr.io/homelessavatar/flarum-caddy:1.8.20
     container_name: flarum
     restart: unless-stopped
     ports:

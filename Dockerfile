@@ -1,7 +1,7 @@
 ARG PHP_VERSION=8.4
 FROM php:${PHP_VERSION}-fpm-alpine
 
-ARG FLARUM_VERSION=v1.8.19
+ARG FLARUM_VERSION=v1.8.20
 
 LABEL org.opencontainers.image.title="flarum-caddy" \
       org.opencontainers.image.description="Ultra-lightweight Flarum Docker image powered by Caddy and PHP 8.4 (Zero Nginx)" \
