@@ -24,6 +24,7 @@ RUN apk add --no-cache \
     curl \
     git \
     icu-data-full \
+    jq \
     mariadb-client \
     su-exec \
     tzdata
@@ -60,40 +61,20 @@ RUN { \
     echo 'opcache.max_accelerated_files = 10000'; \
 } > /usr/local/etc/php/conf.d/flarum.ini
 
-# Initialize Flarum skeleton and bundled extensions
+# Initialize clean Flarum skeleton and record baseline extensions
 WORKDIR /opt/flarum
 RUN COMPOSER_CACHE_DIR=/tmp composer create-project flarum/flarum:^1.8 /opt/flarum --no-install \
  && COMPOSER_CACHE_DIR=/tmp composer require flarum/core:${FLARUM_VERSION} -W --no-interaction \
- && COMPOSER_CACHE_DIR=/tmp composer require \
-    flarum/extension-manager \
-    flarum/nicknames \
-    fof/categories \
-    fof/badges \
-    fof/gamification \
-    fof/oauth \
-    fof/polls \
-    fof/split \
-    fof/move-posts \
-    fof/merge-discussions \
-    fof/anti-spam \
-    fof/prevent-necrobumping \
-    fof/profile-image-crop \
-    fof/user-bio \
-    fof/signature \
-    fof/bookmarks \
-    fof/usercard-stats \
-    fof/forum-statistics-widget \
-    fof/rich-text \
-    fof/discussion-language \
-    -W --no-interaction \
+ && php -r '$c = json_decode(file_get_contents("/opt/flarum/composer.json"), true); file_put_contents("/opt/flarum/.flarum-base-extensions", implode(PHP_EOL, array_keys($c["require"] ?? [])) . PHP_EOL);' \
  && composer clear-cache \
  && chown -R www-data:www-data /opt/flarum \
  && rm -rf /root/.composer /tmp/*
 
-# Copy Caddyfile and entrypoint script
+# Copy Caddyfile, entrypoint script, and extension CLI helper
 COPY Caddyfile /etc/caddy/Caddyfile
 COPY entrypoint.sh /entrypoint.sh
-RUN chmod +x /entrypoint.sh
+COPY extension /usr/local/bin/extension
+RUN chmod +x /entrypoint.sh /usr/local/bin/extension
 
 EXPOSE 8000
 VOLUME ["/data"]

@@ -79,26 +79,35 @@ EOF
 chown www-data:www-data /opt/flarum/config.php
 chmod 640 /opt/flarum/config.php
 
-# Optional: Install extra extensions if defined in /data/extensions/list
+# Install and persist custom extensions from /data/extensions/list
 if [ -s "/data/extensions/list" ]; then
-    echo "[flarum-caddy] Installing custom extensions from /data/extensions/list..."
-    extensions=()
+    echo "[flarum-caddy] Checking custom extensions from /data/extensions/list..."
+    to_install=()
     while IFS= read -r ext; do
         ext="$(echo "$ext" | xargs)"
         [ -z "$ext" ] && continue
         [[ "$ext" == \#* ]] && continue
-        extensions+=("$ext")
+        pkg_name=$(echo "$ext" | cut -d':' -f1)
+        if ! grep -q "\"$pkg_name\"" /opt/flarum/composer.json 2>/dev/null; then
+            to_install+=("$ext")
+        fi
     done < /data/extensions/list
 
-    if [ "${#extensions[@]}" -gt 0 ]; then
-        echo "[flarum-caddy] Running composer require for: ${extensions[*]}"
-        COMPOSER_CACHE_DIR="/data/extensions/.cache" su-exec www-data composer require --working-dir=/opt/flarum "${extensions[@]}" --no-interaction
-        for ext in "${extensions[@]}"; do
-            ext_id="${ext/\//-}"
+    if [ "${#to_install[@]}" -gt 0 ]; then
+        echo "[flarum-caddy] Installing missing extensions: ${to_install[*]}"
+        COMPOSER_CACHE_DIR="/data/extensions/.cache" su-exec www-data composer require --working-dir=/opt/flarum "${to_install[@]}" --no-interaction
+        for ext in "${to_install[@]}"; do
+            pkg_name=$(echo "$ext" | cut -d':' -f1)
+            ext_id="${pkg_name/\//-}"
             su-exec www-data php /opt/flarum/flarum extension:enable "$ext_id" 2>/dev/null || true
         done
+    else
+        echo "[flarum-caddy] All listed extensions are already installed."
     fi
 fi
+
+# Sync any extensions already installed in composer.json to /data/extensions/list
+/usr/local/bin/extension sync 2>/dev/null || true
 
 # Run database migrations
 echo "[flarum-caddy] Running database migrations..."
@@ -107,6 +116,13 @@ su-exec www-data php /opt/flarum/flarum migrate
 # Clear cache
 echo "[flarum-caddy] Clearing and warming Flarum cache..."
 su-exec www-data php /opt/flarum/flarum cache:clear
+
+# Graceful sync function on shutdown
+sync_on_exit() {
+    echo "[flarum-caddy] Container stopping, synchronizing extensions..."
+    /usr/local/bin/extension sync 2>/dev/null || true
+}
+trap sync_on_exit SIGTERM SIGINT
 
 # Start PHP-FPM daemon
 echo "[flarum-caddy] Starting PHP-FPM 8.4..."

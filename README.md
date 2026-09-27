@@ -100,14 +100,32 @@ All persistent data is stored under `/data`:
 - `/data/storage`: Flarum logs, session cache, and views.
 - `/data/extensions`: Extra custom extensions.
 
-### Installing Additional Extensions
-To install community extensions via Composer at startup, create `/data/extensions/list`:
+### Managing & Persisting Extensions
+
+All custom extensions are persisted to your mounted `/data` volume so they are **never lost when upgrading or recreating containers**.
+
+#### Option A: Using the CLI helper
+You can manage extensions live from your host terminal:
+
+```bash
+# Install and persist an extension
+docker compose exec flarum extension require fof/nightmode
+
+# List all persisted extensions
+docker compose exec flarum extension list
+
+# Remove an extension
+docker compose exec flarum extension remove fof/nightmode
+```
+
+#### Option B: Pre-defining extensions in `/data/extensions/list`
+Alternatively, create or edit `./data/flarum/extensions/list` on your host:
 ```text
 fof/nightmode
 fof/upload
 flarum-lang/turkish
 ```
-`flarum-caddy` will automatically run `composer require` for listed extensions when the container boots.
+`flarum-caddy` automatically installs missing extensions from the persistent cache (`/data/extensions/.cache`) and enables them on startup. Extensions installed via the Flarum Admin UI are also automatically synced to `/data/extensions/list`.
 
 ---
 

@@ -1,0 +1,89 @@
+#!/bin/bash
+set -e
+
+BASE_PATH="/opt/flarum"
+EXTS_CACHE_DIR="/data/extensions/.cache"
+LIST_PATH="/data/extensions/list"
+BASELINE_PATH="/opt/flarum/.flarum-base-extensions"
+
+sync_list() {
+    if [ -f "$BASE_PATH/composer.json" ] && [ -f "$BASELINE_PATH" ]; then
+        php -r "
+            \$composer = json_decode(@file_get_contents('$BASE_PATH/composer.json'), true);
+            \$reqs = array_keys(\$composer['require'] ?? []);
+            \$base = array_filter(array_map('trim', @file('$BASELINE_PATH') ?: []));
+            \$custom = array_values(array_diff(\$reqs, \$base));
+            \$listFile = '$LIST_PATH';
+            \$existing = file_exists(\$listFile) ? array_filter(array_map('trim', file(\$listFile))) : [];
+            \$merged = array_unique(array_merge(\$existing, \$custom));
+            sort(\$merged);
+            @mkdir(dirname(\$listFile), 0775, true);
+            file_put_contents(\$listFile, implode(PHP_EOL, \$merged) . PHP_EOL);
+            echo '[flarum-caddy] Synced ' . count(\$merged) . ' extensions to ' . \$listFile . PHP_EOL;
+        "
+    fi
+}
+
+case "$1" in
+    require)
+        shift
+        if [ "$#" -eq 0 ]; then
+            echo "Usage: extension require <vendor/package> [vendor/package2...]"
+            exit 1
+        fi
+        echo "[flarum-caddy] Installing extension(s): $*"
+        COMPOSER_CACHE_DIR="$EXTS_CACHE_DIR" su-exec www-data composer require --working-dir="$BASE_PATH" "$@" --no-interaction
+        for pkg in "$@"; do
+            pkg_name=$(echo "$pkg" | cut -d':' -f1)
+            mkdir -p "$(dirname "$LIST_PATH")"
+            if ! grep -Fxq "$pkg_name" "$LIST_PATH" 2>/dev/null; then
+                echo "$pkg_name" >> "$LIST_PATH"
+                echo "[flarum-caddy] Added $pkg_name to $LIST_PATH"
+            fi
+            ext_id="${pkg_name/\//-}"
+            su-exec www-data php "$BASE_PATH/flarum" extension:enable "$ext_id" 2>/dev/null || true
+        done
+        su-exec www-data php "$BASE_PATH/flarum" cache:clear
+        sync_list
+        ;;
+    remove)
+        shift
+        if [ "$#" -eq 0 ]; then
+            echo "Usage: extension remove <vendor/package> [vendor/package2...]"
+            exit 1
+        fi
+        echo "[flarum-caddy] Removing extension(s): $*"
+        for pkg in "$@"; do
+            pkg_name=$(echo "$pkg" | cut -d':' -f1)
+            ext_id="${pkg_name/\//-}"
+            su-exec www-data php "$BASE_PATH/flarum" extension:disable "$ext_id" 2>/dev/null || true
+            if [ -f "$LIST_PATH" ]; then
+                sed -i "/^${pkg_name//\//\\/}$/d" "$LIST_PATH"
+                echo "[flarum-caddy] Removed $pkg_name from $LIST_PATH"
+            fi
+        done
+        COMPOSER_CACHE_DIR="$EXTS_CACHE_DIR" su-exec www-data composer remove --working-dir="$BASE_PATH" "$@" --no-interaction
+        su-exec www-data php "$BASE_PATH/flarum" cache:clear
+        sync_list
+        ;;
+    list)
+        if [ -s "$LIST_PATH" ]; then
+            echo "Custom extensions in $LIST_PATH:"
+            cat "$LIST_PATH"
+        else
+            echo "No custom extensions found in $LIST_PATH"
+        fi
+        ;;
+    sync)
+        sync_list
+        ;;
+    *)
+        echo "flarum-caddy extension manager"
+        echo "Usage:"
+        echo "  extension require <package>   Install and persist an extension"
+        echo "  extension remove <package>    Remove and unpersist an extension"
+        echo "  extension list                List all persisted extensions"
+        echo "  extension sync                Sync installed extensions to /data/extensions/list"
+        exit 1
+        ;;
+esac
