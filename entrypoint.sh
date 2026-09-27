@@ -84,15 +84,19 @@ if [ -s "/data/extensions/list" ]; then
     echo "[flarum-caddy] Installing custom extensions from /data/extensions/list..."
     extensions=()
     while IFS= read -r ext; do
-        ext="\$(echo "\$ext" | xargs)"
-        [ -z "\$ext" ] && continue
-        [[ "\$ext" == \#* ]] && continue
-        extensions+=("\$ext")
+        ext="$(echo "$ext" | xargs)"
+        [ -z "$ext" ] && continue
+        [[ "$ext" == \#* ]] && continue
+        extensions+=("$ext")
     done < /data/extensions/list
 
-    if [ "\${#extensions[@]}" -gt 0 ]; then
-        echo "[flarum-caddy] Running composer require for: \${extensions[*]}"
-        COMPOSER_CACHE_DIR="/data/extensions/.cache" su-exec www-data composer require --working-dir=/opt/flarum "\${extensions[@]}" --no-interaction
+    if [ "${#extensions[@]}" -gt 0 ]; then
+        echo "[flarum-caddy] Running composer require for: ${extensions[*]}"
+        COMPOSER_CACHE_DIR="/data/extensions/.cache" su-exec www-data composer require --working-dir=/opt/flarum "${extensions[@]}" --no-interaction
+        for ext in "${extensions[@]}"; do
+            ext_id="${ext/\//-}"
+            su-exec www-data php /opt/flarum/flarum extension:enable "$ext_id" 2>/dev/null || true
+        done
     fi
 fi
 

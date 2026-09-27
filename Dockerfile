@@ -64,6 +64,28 @@ RUN { \
 WORKDIR /opt/flarum
 RUN COMPOSER_CACHE_DIR=/tmp composer create-project flarum/flarum:^1.8 /opt/flarum --no-install \
  && COMPOSER_CACHE_DIR=/tmp composer require flarum/core:${FLARUM_VERSION} -W --no-interaction \
+ && COMPOSER_CACHE_DIR=/tmp composer require \
+    flarum/extension-manager \
+    flarum/nicknames \
+    fof/categories \
+    fof/badges \
+    fof/gamification \
+    fof/oauth \
+    fof/polls \
+    fof/split \
+    fof/move-posts \
+    fof/merge-discussions \
+    fof/anti-spam \
+    fof/prevent-necrobumping \
+    fof/profile-image-crop \
+    fof/user-bio \
+    fof/signature \
+    fof/bookmarks \
+    fof/usercard-stats \
+    fof/forum-statistics-widget \
+    fof/rich-text \
+    fof/discussion-language \
+    -W --no-interaction \
  && composer clear-cache \
  && chown -R www-data:www-data /opt/flarum \
  && rm -rf /root/.composer /tmp/*
