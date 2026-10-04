@@ -43,6 +43,15 @@ jobs:
           subprocess.run(["git", "config", "user.name", "github-actions[bot]"], check=True)
           subprocess.run(["git", "config", "user.email", "github-actions[bot]@users.noreply.github.com"], check=True)
 
+          def commit_if_changed(files, message):
+              for f in files:
+                  subprocess.run(["git", "add", f], check=True)
+              status = subprocess.check_output(["git", "status", "--porcelain"]).decode().strip()
+              if status:
+                  subprocess.run(["git", "commit", "-m", message], check=True)
+                  return True
+              return False
+
           # 1. Check Caddy (caddyserver/caddy)
           curr_caddy = ""
           if os.path.exists(".caddy-version"):
@@ -68,8 +77,7 @@ jobs:
               print(f"New Caddy release detected: {latest_caddy}")
               with open(".caddy-version", "w") as f:
                   f.write(latest_caddy + "\n")
-              subprocess.run(["git", "add", ".caddy-version"], check=True)
-              subprocess.run(["git", "commit", "-m", f"ci(caddy): bump upstream Caddy to {latest_caddy}"], check=True)
+              commit_if_changed([".caddy-version"], f"ci(caddy): bump upstream Caddy to {latest_caddy}")
               caddy_updated = True
 
           # 2. Check Flarum from Packagist (official canonical registry)
@@ -108,8 +116,7 @@ jobs:
               print(f"New Flarum 1.8 release detected: {latest_18}! Updating...")
               with open(".flarum-1.8-version", "w") as f:
                   f.write(latest_18 + "\n")
-              subprocess.run(["git", "add", ".flarum-1.8-version"], check=True)
-              subprocess.run(["git", "commit", "-m", f"chore(release): bump Flarum 1.8 to {latest_18}"], check=True)
+              commit_if_changed([".flarum-1.8-version"], f"chore(release): bump Flarum 1.8 to {latest_18}")
               if latest_18 not in existing_tags:
                   subprocess.run(["git", "tag", "-a", latest_18, "-m", f"Release {latest_18} (Upstream Flarum 1.8)"], check=True)
               f18_updated = True
@@ -119,14 +126,14 @@ jobs:
               print(f"New Flarum 2.0 release detected: {latest_20}! Updating...")
               with open(".flarum-2.0-version", "w") as f:
                   f.write(latest_20 + "\n")
-              subprocess.run(["git", "add", ".flarum-2.0-version"], check=True)
-              subprocess.run(["git", "commit", "-m", f"chore(release): bump Flarum 2.0 to {latest_20}"], check=True)
+              commit_if_changed([".flarum-2.0-version"], f"chore(release): bump Flarum 2.0 to {latest_20}")
               if latest_20 not in existing_tags:
                   subprocess.run(["git", "tag", "-a", latest_20, "-m", f"Release {latest_20} (Upstream Flarum 2.0)"], check=True)
               f20_updated = True
 
           # Push commits & tags
-          if caddy_updated or f18_updated or f20_updated:
+          diff_origin = subprocess.check_output(["git", "log", "origin/main..HEAD"]).decode().strip()
+          if diff_origin:
               subprocess.run(["git", "push", "origin", "main"], check=True)
           if f18_updated and latest_18 not in existing_tags:
               subprocess.run(["git", "push", "origin", latest_18], check=True)
