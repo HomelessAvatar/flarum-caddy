@@ -1,7 +1,15 @@
+# syntax=docker/dockerfile:1
 ARG PHP_VERSION=8.4
+
+# Step 1: Extract official Caddy binary
+FROM caddy:2-alpine AS caddy-bin
+
+# Step 2: Build Flarum Caddy image
 FROM php:${PHP_VERSION}-fpm-alpine
 
 ARG FLARUM_VERSION=v1.8.20
+ARG FLARUM_SKELETON=^1.8
+ENV FLARUM_VERSION=${FLARUM_VERSION}
 
 LABEL org.opencontainers.image.title="flarum-caddy" \
       org.opencontainers.image.description="Ultra-lightweight Flarum Docker image powered by Caddy and PHP 8.4 (Zero Nginx)" \
@@ -17,10 +25,9 @@ ENV TZ=UTC \
     DB_USER=flarum \
     DB_PREFIX=fl_
 
-# Install system dependencies, Caddy web server, and utilities
+# Install system dependencies and utilities
 RUN apk add --no-cache \
     bash \
-    caddy \
     curl \
     git \
     icu-data-full \
@@ -28,6 +35,9 @@ RUN apk add --no-cache \
     mariadb-client \
     su-exec \
     tzdata
+
+# Copy official Caddy v2 binary
+COPY --from=caddy-bin /usr/bin/caddy /usr/bin/caddy
 
 # Install official PHP extension installer
 ADD --chmod=0755 https://github.com/mlocati/docker-php-extension-installer/releases/latest/download/install-php-extensions /usr/local/bin/
@@ -63,7 +73,7 @@ RUN { \
 
 # Initialize clean Flarum skeleton and record baseline extensions
 WORKDIR /opt/flarum
-RUN COMPOSER_CACHE_DIR=/tmp composer create-project flarum/flarum:^1.8 /opt/flarum --no-install \
+RUN COMPOSER_CACHE_DIR=/tmp composer create-project flarum/flarum:${FLARUM_SKELETON} /opt/flarum --no-install \
  && COMPOSER_CACHE_DIR=/tmp composer require flarum/core:${FLARUM_VERSION} -W --no-interaction \
  && php -r '$c = json_decode(file_get_contents("/opt/flarum/composer.json"), true); file_put_contents("/opt/flarum/.flarum-base-extensions", implode(PHP_EOL, array_keys($c["require"] ?? [])) . PHP_EOL);' \
  && composer clear-cache \

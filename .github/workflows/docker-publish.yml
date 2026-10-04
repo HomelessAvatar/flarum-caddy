@@ -1,18 +1,114 @@
-name: Build and Publish Docker Image
+name: Build and Publish Flarum Caddy Image
 
 on:
   push:
-    branches: [ "main" ]
-    tags: [ 'v*.*.*' ]
+    tags: [ 'v*.*.*', 'v*-*' ]
   workflow_dispatch:
+    inputs:
+      series:
+        description: 'Flarum series to build (1.8, 2.0, or all)'
+        required: false
+        default: 'all'
+        type: choice
+        options:
+          - all
+          - '1.8'
+          - '2.0'
+      target_tag:
+        description: 'Explicit target tag (e.g. v1.8.20 or v2.0.0-rc.8)'
+        required: false
+        type: string
+  workflow_call:
+    inputs:
+      series:
+        description: 'Flarum series to build (1.8, 2.0, or all)'
+        required: false
+        default: 'all'
+        type: string
+      target_tag:
+        description: 'Explicit target tag (e.g. v1.8.20 or v2.0.0-rc.8)'
+        required: false
+        type: string
 
 env:
   REGISTRY: ghcr.io
   IMAGE_NAME: ${{ github.repository }}
 
 jobs:
-  build-and-push:
+  prepare-matrix:
     runs-on: ubuntu-latest
+    outputs:
+      matrix: ${{ steps.set-matrix.outputs.matrix }}
+      tag_18: ${{ steps.set-matrix.outputs.tag_18 }}
+      tag_20: ${{ steps.set-matrix.outputs.tag_20 }}
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Resolve Build Matrix and Versions
+        id: set-matrix
+        run: |
+          set -e
+
+          # Read baseline recorded versions from repo files
+          FILE_18="v1.8.20"
+          [ -f .flarum-1.8-version ] && FILE_18=$(cat .flarum-1.8-version | tr -d '[:space:]')
+          FILE_20="v2.0.0-rc.8"
+          [ -f .flarum-2.0-version ] && FILE_20=$(cat .flarum-2.0-version | tr -d '[:space:]')
+
+          CHOSEN_SERIES="${{ inputs.series }}"
+          TARGET_TAG="${{ inputs.target_tag }}"
+
+          # If triggered by git tag push directly
+          if [ -z "$CHOSEN_SERIES" ] && [ "${{ github.ref_type }}" = "tag" ]; then
+            TAG_NAME="${{ github.ref_name }}"
+            if [[ "$TAG_NAME" == v1.8* ]] || [[ "$TAG_NAME" == 1.8* ]]; then
+              CHOSEN_SERIES="1.8"
+              TARGET_TAG="$TAG_NAME"
+            elif [[ "$TAG_NAME" == v2* ]] || [[ "$TAG_NAME" == 2* ]]; then
+              CHOSEN_SERIES="2.0"
+              TARGET_TAG="$TAG_NAME"
+            else
+              CHOSEN_SERIES="all"
+            fi
+          fi
+
+          [ -z "$CHOSEN_SERIES" ] && CHOSEN_SERIES="all"
+
+          TAG_18="$FILE_18"
+          TAG_20="$FILE_20"
+
+          if [ -n "$TARGET_TAG" ]; then
+            if [[ "$TARGET_TAG" == v1.8* ]] || [[ "$TARGET_TAG" == 1.8* ]]; then
+              TAG_18="$TARGET_TAG"
+            elif [[ "$TARGET_TAG" == v2* ]] || [[ "$TARGET_TAG" == 2* ]]; then
+              TAG_20="$TARGET_TAG"
+            fi
+          fi
+
+          if [ "$CHOSEN_SERIES" = "1.8" ]; then
+            MATRIX='["1.8"]'
+          elif [ "$CHOSEN_SERIES" = "2.0" ]; then
+            MATRIX='["2.0"]'
+          else
+            MATRIX='["1.8", "2.0"]'
+          fi
+
+          echo "Selected Series Matrix: $MATRIX"
+          echo "Tag 1.8: $TAG_18"
+          echo "Tag 2.0: $TAG_20"
+
+          echo "matrix=$MATRIX" >> "$GITHUB_OUTPUT"
+          echo "tag_18=$TAG_18" >> "$GITHUB_OUTPUT"
+          echo "tag_20=$TAG_20" >> "$GITHUB_OUTPUT"
+
+  build-and-push:
+    needs: prepare-matrix
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        series: ${{ fromJSON(needs.prepare-matrix.outputs.matrix) }}
     permissions:
       contents: read
       packages: write
@@ -20,6 +116,39 @@ jobs:
     steps:
       - name: Checkout repository
         uses: actions/checkout@v4
+
+      - name: Determine Series Build Parameters
+        id: params
+        run: |
+          set -e
+          SERIES="${{ matrix.series }}"
+          if [ "$SERIES" = "1.8" ]; then
+            RAW_VERSION="${{ needs.prepare-matrix.outputs.tag_18 }}"
+            CLEAN_VERSION="${RAW_VERSION#v}"
+            SKELETON="^1.8"
+            TAGS="${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:${CLEAN_VERSION},${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:1.8,${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:latest"
+          else
+            RAW_VERSION="${{ needs.prepare-matrix.outputs.tag_20 }}"
+            CLEAN_VERSION="${RAW_VERSION#v}"
+            if [[ "$RAW_VERSION" == *"rc"* ]] || [[ "$RAW_VERSION" == *"beta"* ]]; then
+              SKELETON="^2.0@rc"
+              EXTRA_TAG="${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:2.0-rc"
+            else
+              SKELETON="^2.0"
+              EXTRA_TAG="${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:2.0-latest"
+            fi
+            TAGS="${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:${CLEAN_VERSION},${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:2.0,${EXTRA_TAG}"
+          fi
+
+          echo "Building Series: $SERIES"
+          echo "Flarum Version: $RAW_VERSION (Clean: $CLEAN_VERSION)"
+          echo "Flarum Skeleton: $SKELETON"
+          echo "Docker Tags: $TAGS"
+
+          echo "flarum_version=$RAW_VERSION" >> "$GITHUB_OUTPUT"
+          echo "clean_version=$CLEAN_VERSION" >> "$GITHUB_OUTPUT"
+          echo "flarum_skeleton=$SKELETON" >> "$GITHUB_OUTPUT"
+          echo "docker_tags=$TAGS" >> "$GITHUB_OUTPUT"
 
       - name: Set up QEMU
         uses: docker/setup-qemu-action@v3
@@ -34,24 +163,15 @@ jobs:
           username: ${{ github.actor }}
           password: ${{ secrets.GITHUB_TOKEN }}
 
-      - name: Extract Docker metadata
-        id: meta
-        uses: docker/metadata-action@v5
-        with:
-          images: ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}
-          tags: |
-            type=raw,value=latest,enable={{is_default_branch}}
-            type=semver,pattern={{version}}
-            type=semver,pattern={{major}}.{{minor}}
-            type=raw,value=1.8.20
-
       - name: Build and push Docker image
         uses: docker/build-push-action@v5
         with:
           context: .
           platforms: linux/amd64,linux/arm64
           push: true
-          tags: ${{ steps.meta.outputs.tags }}
-          labels: ${{ steps.meta.outputs.labels }}
-          cache-from: type=gha
-          cache-to: type=gha,mode=max
+          build-args: |
+            FLARUM_VERSION=${{ steps.params.outputs.flarum_version }}
+            FLARUM_SKELETON=${{ steps.params.outputs.flarum_skeleton }}
+          tags: ${{ steps.params.outputs.docker_tags }}
+          cache-from: type=gha,scope=${{ matrix.series }}
+          cache-to: type=gha,mode=max,scope=${{ matrix.series }}

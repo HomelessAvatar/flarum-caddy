@@ -1,0 +1,166 @@
+name: Check Upstream Releases (Flarum & Caddy)
+
+on:
+  schedule:
+    # Run daily at 04:00 UTC
+    - cron: '0 4 * * *'
+  workflow_dispatch:
+
+permissions:
+  contents: write
+  packages: write
+
+jobs:
+  check-upstream:
+    runs-on: ubuntu-latest
+    outputs:
+      caddy_updated: ${{ steps.check.outputs.caddy_updated }}
+      f18_updated: ${{ steps.check.outputs.f18_updated }}
+      f20_updated: ${{ steps.check.outputs.f20_updated }}
+      new_18_tag: ${{ steps.check.outputs.new_18_tag }}
+      new_20_tag: ${{ steps.check.outputs.new_20_tag }}
+      series_to_build: ${{ steps.check.outputs.series_to_build }}
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+          token: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.x'
+
+      - name: Check Upstream Flarum (1.8 & 2.0) and Caddy
+        id: check
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          python3 - << 'EOF'
+          import json, os, subprocess, urllib.request
+
+          subprocess.run(["git", "config", "user.name", "github-actions[bot]"], check=True)
+          subprocess.run(["git", "config", "user.email", "github-actions[bot]@users.noreply.github.com"], check=True)
+
+          # 1. Check Caddy (caddyserver/caddy)
+          curr_caddy = ""
+          if os.path.exists(".caddy-version"):
+              with open(".caddy-version") as f:
+                  curr_caddy = f.read().strip()
+
+          gh_token = os.environ.get("GH_TOKEN", "")
+          caddy_headers = {"User-Agent": "Python"}
+          if gh_token:
+              caddy_headers["Authorization"] = f"Bearer {gh_token}"
+
+          caddy_req = urllib.request.Request("https://api.github.com/repos/caddyserver/caddy/releases/latest", headers=caddy_headers)
+          latest_caddy = ""
+          try:
+              caddy_data = json.loads(urllib.request.urlopen(caddy_req).read().decode())
+              latest_caddy = caddy_data.get("tag_name", "")
+          except Exception as e:
+              print(f"Error fetching Caddy release: {e}")
+
+          print(f"Current Caddy: {curr_caddy} | Upstream Caddy: {latest_caddy}")
+          caddy_updated = False
+          if latest_caddy and latest_caddy != curr_caddy:
+              print(f"New Caddy release detected: {latest_caddy}")
+              with open(".caddy-version", "w") as f:
+                  f.write(latest_caddy + "\n")
+              subprocess.run(["git", "add", ".caddy-version"], check=True)
+              subprocess.run(["git", "commit", "-m", f"ci(caddy): bump upstream Caddy to {latest_caddy}"], check=True)
+              caddy_updated = True
+
+          # 2. Check Flarum from Packagist (official canonical registry)
+          flarum_req = urllib.request.Request("https://repo.packagist.org/p2/flarum/core.json", headers={"User-Agent": "Python"})
+          flarum_data = json.loads(urllib.request.urlopen(flarum_req).read().decode())
+          pkgs = flarum_data.get("packages", {}).get("flarum/core", [])
+
+          # 2a. Flarum 1.8 series
+          v18_list = [p["version"] for p in pkgs if p["version"].startswith("v1.8.") or p["version"].startswith("1.8.")]
+          latest_18 = v18_list[0] if v18_list else "v1.8.20"
+          if not latest_18.startswith("v"):
+              latest_18 = "v" + latest_18
+
+          curr_18 = ""
+          if os.path.exists(".flarum-1.8-version"):
+              with open(".flarum-1.8-version") as f:
+                  curr_18 = f.read().strip()
+          print(f"Current Flarum 1.8: {curr_18} | Upstream Flarum 1.8: {latest_18}")
+
+          # 2b. Flarum 2.0 series
+          v20_list = [p["version"] for p in pkgs if p["version"].startswith("v2.") or p["version"].startswith("2.")]
+          latest_20 = v20_list[0] if v20_list else "v2.0.0-rc.8"
+          if not latest_20.startswith("v"):
+              latest_20 = "v" + latest_20
+
+          curr_20 = ""
+          if os.path.exists(".flarum-2.0-version"):
+              with open(".flarum-2.0-version") as f:
+                  curr_20 = f.read().strip()
+          print(f"Current Flarum 2.0: {curr_20} | Upstream Flarum 2.0: {latest_20}")
+
+          existing_tags = subprocess.check_output(["git", "tag"]).decode().splitlines()
+
+          f18_updated = False
+          if latest_18 != curr_18 or latest_18 not in existing_tags:
+              print(f"New Flarum 1.8 release detected: {latest_18}! Updating...")
+              with open(".flarum-1.8-version", "w") as f:
+                  f.write(latest_18 + "\n")
+              subprocess.run(["git", "add", ".flarum-1.8-version"], check=True)
+              subprocess.run(["git", "commit", "-m", f"chore(release): bump Flarum 1.8 to {latest_18}"], check=True)
+              if latest_18 not in existing_tags:
+                  subprocess.run(["git", "tag", "-a", latest_18, "-m", f"Release {latest_18} (Upstream Flarum 1.8)"], check=True)
+              f18_updated = True
+
+          f20_updated = False
+          if latest_20 != curr_20 or latest_20 not in existing_tags:
+              print(f"New Flarum 2.0 release detected: {latest_20}! Updating...")
+              with open(".flarum-2.0-version", "w") as f:
+                  f.write(latest_20 + "\n")
+              subprocess.run(["git", "add", ".flarum-2.0-version"], check=True)
+              subprocess.run(["git", "commit", "-m", f"chore(release): bump Flarum 2.0 to {latest_20}"], check=True)
+              if latest_20 not in existing_tags:
+                  subprocess.run(["git", "tag", "-a", latest_20, "-m", f"Release {latest_20} (Upstream Flarum 2.0)"], check=True)
+              f20_updated = True
+
+          # Push commits & tags
+          if caddy_updated or f18_updated or f20_updated:
+              subprocess.run(["git", "push", "origin", "main"], check=True)
+          if f18_updated and latest_18 not in existing_tags:
+              subprocess.run(["git", "push", "origin", latest_18], check=True)
+          if f20_updated and latest_20 not in existing_tags:
+              subprocess.run(["git", "push", "origin", latest_20], check=True)
+
+          # Determine series to build
+          if caddy_updated:
+              series_to_build = "all"
+          elif f18_updated and f20_updated:
+              series_to_build = "all"
+          elif f18_updated:
+              series_to_build = "1.8"
+          elif f20_updated:
+              series_to_build = "2.0"
+          else:
+              series_to_build = ""
+
+          # Write GitHub step outputs
+          gh_out = os.environ.get("GITHUB_OUTPUT", "")
+          if gh_out:
+              with open(gh_out, "a") as out:
+                  out.write(f"caddy_updated={'true' if caddy_updated else 'false'}\n")
+                  out.write(f"f18_updated={'true' if f18_updated else 'false'}\n")
+                  out.write(f"f20_updated={'true' if f20_updated else 'false'}\n")
+                  out.write(f"new_18_tag={latest_18 if f18_updated else ''}\n")
+                  out.write(f"new_20_tag={latest_20 if f20_updated else ''}\n")
+                  out.write(f"series_to_build={series_to_build}\n")
+          EOF
+
+  build-and-publish:
+    needs: check-upstream
+    if: needs.check-upstream.outputs.caddy_updated == 'true' || needs.check-upstream.outputs.f18_updated == 'true' || needs.check-upstream.outputs.f20_updated == 'true'
+    uses: ./.github/workflows/docker-publish.yml
+    with:
+      series: ${{ needs.check-upstream.outputs.series_to_build }}
+      target_tag: ${{ needs.check-upstream.outputs.new_18_tag || needs.check-upstream.outputs.new_20_tag }}
