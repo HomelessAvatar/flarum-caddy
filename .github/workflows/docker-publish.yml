@@ -121,23 +121,24 @@ jobs:
         id: params
         run: |
           set -e
+          IMAGE_BASE="ghcr.io/$(echo "${{ github.repository }}" | tr '[:upper:]' '[:lower:]')"
           SERIES="${{ matrix.series }}"
           if [ "$SERIES" = "1.8" ]; then
             RAW_VERSION="${{ needs.prepare-matrix.outputs.tag_18 }}"
             CLEAN_VERSION="${RAW_VERSION#v}"
             SKELETON="^1.8"
-            TAGS="${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:${CLEAN_VERSION},${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:1.8,${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:latest"
+            TAGS="${IMAGE_BASE}:${CLEAN_VERSION},${IMAGE_BASE}:1.8,${IMAGE_BASE}:latest"
           else
             RAW_VERSION="${{ needs.prepare-matrix.outputs.tag_20 }}"
             CLEAN_VERSION="${RAW_VERSION#v}"
             if [[ "$RAW_VERSION" == *"rc"* ]] || [[ "$RAW_VERSION" == *"beta"* ]]; then
               SKELETON="^2.0@rc"
-              EXTRA_TAG="${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:2.0-rc"
+              EXTRA_TAG="${IMAGE_BASE}:2.0-rc"
             else
               SKELETON="^2.0"
-              EXTRA_TAG="${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:2.0-latest"
+              EXTRA_TAG="${IMAGE_BASE}:2.0-latest"
             fi
-            TAGS="${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:${CLEAN_VERSION},${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:2.0,${EXTRA_TAG}"
+            TAGS="${IMAGE_BASE}:${CLEAN_VERSION},${IMAGE_BASE}:2.0,${EXTRA_TAG}"
           fi
 
           echo "Building Series: $SERIES"
