@@ -73,6 +73,11 @@ cat <<EOF > /opt/flarum/config.php
     'poweredByHeader' => true,
     'referrerPolicy' => 'same-origin',
   ),
+  'cookie' => 
+  array (
+    'domain' => getenv('FLARUM_COOKIE_DOMAIN') ?: '.vaelcodex.com',
+    'path' => '/',
+  ),
 );
 EOF
 
