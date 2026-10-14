@@ -32,6 +32,8 @@ case "$1" in
             exit 1
         fi
         echo "[flarum-caddy] Installing extension(s): $*"
+        su-exec www-data composer config minimum-stability beta --working-dir="$BASE_PATH" 2>/dev/null || true
+        su-exec www-data composer config prefer-stable true --working-dir="$BASE_PATH" 2>/dev/null || true
         COMPOSER_CACHE_DIR="$EXTS_CACHE_DIR" su-exec www-data composer require --working-dir="$BASE_PATH" "$@" --no-interaction
         for pkg in "$@"; do
             pkg_name=$(echo "$pkg" | cut -d':' -f1)

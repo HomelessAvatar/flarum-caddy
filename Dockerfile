@@ -74,6 +74,8 @@ RUN { \
 # Initialize clean Flarum skeleton and record baseline extensions
 WORKDIR /opt/flarum
 RUN COMPOSER_CACHE_DIR=/tmp composer create-project flarum/flarum:${FLARUM_SKELETON} /opt/flarum --no-install \
+ && composer config minimum-stability beta --working-dir=/opt/flarum \
+ && composer config prefer-stable true --working-dir=/opt/flarum \
  && COMPOSER_CACHE_DIR=/tmp composer require flarum/core:${FLARUM_VERSION} -W --no-interaction \
  && php -r '$c = json_decode(file_get_contents("/opt/flarum/composer.json"), true); file_put_contents("/opt/flarum/.flarum-base-extensions", implode(PHP_EOL, array_keys($c["require"] ?? [])) . PHP_EOL);' \
  && composer clear-cache \

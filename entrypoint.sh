@@ -100,6 +100,8 @@ if [ -s "/data/extensions/list" ]; then
 
     if [ "${#to_install[@]}" -gt 0 ]; then
         echo "[flarum-caddy] Installing missing extensions: ${to_install[*]}"
+        su-exec www-data composer config minimum-stability beta --working-dir=/opt/flarum 2>/dev/null || true
+        su-exec www-data composer config prefer-stable true --working-dir=/opt/flarum 2>/dev/null || true
         COMPOSER_CACHE_DIR="/data/extensions/.cache" su-exec www-data composer require --working-dir=/opt/flarum "${to_install[@]}" --no-interaction
         for ext in "${to_install[@]}"; do
             pkg_name=$(echo "$ext" | cut -d':' -f1)
