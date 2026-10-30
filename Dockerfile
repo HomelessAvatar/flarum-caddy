@@ -57,6 +57,11 @@ RUN install-php-extensions \
 # Install Composer 2
 COPY --from=composer:2 /usr/bin/composer /usr/bin/composer
 
+# Configure Composer environment policies (disable advisory blocking for legacy Flarum 1.8 packages)
+ENV COMPOSER_ALLOW_SUPERUSER=1 \
+    COMPOSER_POLICY=0 \
+    COMPOSER_AUDIT_ABANDONED=ignore
+
 # Configure PHP runtime optimizations
 RUN { \
     echo 'memory_limit = 256M'; \
